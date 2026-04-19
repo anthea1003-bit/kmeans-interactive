@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -39,14 +40,12 @@
     <style>
         body { margin: 0; overflow: hidden; background-color: #F8FAFC; }
         
-        /* 專業商務卡片樣式 */
         .corp-panel {
             background: #FFFFFF;
             border-right: 1px solid #E2E8F0;
             box-shadow: 4px 0 15px rgba(0, 0, 0, 0.03);
         }
 
-        /* 高對比浮動標籤 */
         .corp-label {
             background: #FFFFFF;
             border: 2px solid;
@@ -59,7 +58,6 @@
             transition: border-color 0.3s ease;
         }
 
-        /* 扁平化商務滑桿 */
         input[type=range] {
             -webkit-appearance: none;
             width: 100%;
@@ -82,7 +80,6 @@
             border-radius: 2px;
         }
         
-        /* 隱藏滾動條 */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
@@ -92,17 +89,16 @@
 
 <div id="app" class="flex h-screen w-screen overflow-hidden">
     
-    <!-- 左側教學互動 UI (商務白底) -->
-    <div class="corp-panel w-96 z-10 flex flex-col p-8 h-full overflow-y-auto shrink-0 relative">
+    <div class="corp-panel w-[26rem] z-10 flex flex-col p-8 h-full overflow-y-auto shrink-0 relative">
         <h1 class="text-3xl font-black mb-2 text-mckinsey-navy tracking-tight">
             K-means 分群
         </h1>
         <p class="text-slate-500 text-sm font-bold mb-8 leading-relaxed">
-            透過 3D 空間直觀了解資料分群過程。調整參數，並透過迭代觀察群集中心如何捕捉資料特徵。
+            觀察 3D 空間資料分群過程。一次完整迭代包含「分派」與「更新」，可手動單步執行或點擊自動收斂。
         </p>
 
         <!-- 控制面板 -->
-        <div class="bg-slate-50 rounded-lg p-5 mb-6 border border-slate-200">
+        <div class="bg-slate-50 rounded-lg p-5 mb-6 border border-slate-200" :class="{ 'opacity-50 pointer-events-none': isAutoRunning }">
             <div class="mb-6">
                 <div class="flex justify-between items-center mb-2">
                     <label class="text-lg text-slate-700">群集數量 (K)</label>
@@ -123,40 +119,50 @@
         <!-- 狀態與操作 -->
         <div class="bg-slate-50 rounded-lg p-5 mb-auto border border-slate-200">
             <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
-                <span class="text-slate-500 text-sm uppercase tracking-wider font-bold">迭代次數</span>
+                <span class="text-slate-500 text-sm uppercase tracking-wider font-bold">完整迭代次數</span>
                 <span class="text-3xl font-black text-mckinsey-navy">{{ iterations }}</span>
             </div>
             
             <div class="space-y-3 pt-2">
                 <button 
                     @click="stepAlgorithm"
-                    class="w-full py-4 rounded font-black text-lg transition-colors border-2 flex items-center justify-center gap-2"
-                    :class="nextAction === 'assign' ? 'bg-mckinsey-navy border-mckinsey-navy text-white hover:bg-slate-800' : 'bg-mckinsey-teal border-mckinsey-teal text-white hover:bg-teal-600'"
+                    :disabled="isAutoRunning || isConverged"
+                    class="w-full py-3 rounded font-black text-lg transition-colors border-2 flex items-center justify-center gap-2"
+                    :class="[
+                        isConverged ? 'bg-slate-200 border-slate-300 text-slate-400 cursor-not-allowed' : 
+                        nextAction === 'assign' ? 'bg-mckinsey-navy border-mckinsey-navy text-white hover:bg-slate-800' : 'bg-mckinsey-teal border-mckinsey-teal text-white hover:bg-teal-600',
+                        { 'opacity-50 pointer-events-none': isAutoRunning }
+                    ]"
                 >
-                    {{ nextAction === 'assign' ? '1. 分派資料點 (Assign)' : '2. 更新中心點 (Update)' }}
+                    {{ isConverged ? '演算法已收斂 (Completed)' : (nextAction === 'assign' ? '1. 分派資料點 (Assign)' : '2. 更新中心點 (Update)') }}
+                </button>
+
+                <button 
+                    @click="toggleAutoRun"
+                    :disabled="isConverged && !isAutoRunning"
+                    class="w-full py-3 rounded font-black text-lg transition-colors border-2 flex items-center justify-center gap-2 shadow-sm"
+                    :class="[
+                        isConverged && !isAutoRunning ? 'bg-slate-100 border-slate-200 text-slate-300 cursor-not-allowed' :
+                        isAutoRunning ? 'bg-red-600 border-red-600 text-white hover:bg-red-700' : 'bg-mckinsey-gold border-mckinsey-gold text-white hover:bg-yellow-500'
+                    ]"
+                >
+                    {{ isAutoRunning ? '暫停執行 (Pause)' : '自動迭代至收斂 (Auto Run)' }}
                 </button>
                 
                 <button 
                     @click="resetAlgorithm"
-                    class="w-full py-3 rounded font-bold text-slate-600 bg-white hover:bg-slate-100 transition-colors border-2 border-slate-300"
+                    class="w-full py-3 rounded font-bold text-slate-600 bg-white hover:bg-slate-100 transition-colors border-2 border-slate-300 mt-4"
                 >
                     重置空間 (Reset)
                 </button>
             </div>
         </div>
-
-        <!-- 說明區塊 -->
-        <div class="mt-6 p-4 bg-white rounded border border-slate-200 text-sm text-slate-600 shadow-sm">
-            <span class="text-mckinsey-navy font-black">分派：</span>計算每個點到最近中心的距離並上色。<br>
-            <span class="text-mckinsey-teal font-black">更新：</span>計算同色點的平均座標，移動中心點。
-        </div>
     </div>
 
-    <!-- 右側 3D 視覺化 Canvas (米白底色) -->
+    <!-- 右側 3D 視覺化 Canvas -->
     <div id="canvas-wrapper" class="flex-1 relative w-full h-full bg-slate-50" ref="canvasWrapper">
         <canvas id="webgl-canvas" class="absolute inset-0 w-full h-full"></canvas>
         
-        <!-- 智慧型標籤系統 (高對比企業風格) -->
         <div v-for="(label, index) in labels" :key="'label-'+index"
              class="absolute corp-label px-4 py-2 flex flex-col items-center justify-center min-w-[100px] transition-opacity duration-200"
              :style="{ 
@@ -179,21 +185,12 @@
 </div>
 
 <script>
-    const { createApp, ref, onMounted, watch } = Vue;
+    const { createApp, ref, onMounted } = Vue;
 
-    // --- 麥肯錫商務專業色系 ---
-    const PALETTE = [
-        0x005F9E, // 標準藍
-        0x00A9A5, // 商務青
-        0x8B1A4F, // 沉穩酒紅
-        0xF2A900, // 重點金
-        0x5BA3D9, // 淺藍
-        0x64748B  // 鐵灰
-    ];
-    const UNASSIGNED_COLOR = 0xCBD5E1; // 未分派的淺灰 (Slate 300)
-    const BG_COLOR = '#F8FAFC'; // 米白底色 (Slate 50)
+    const PALETTE = [ 0x005F9E, 0x00A9A5, 0x8B1A4F, 0xF2A900, 0x5BA3D9, 0x64748B ];
+    const UNASSIGNED_COLOR = 0xCBD5E1; 
+    const BG_COLOR = '#F8FAFC'; 
 
-    // --- Three.js 核心類別 ---
     class KMeansScene {
         constructor(canvasId, vueApp) {
             this.canvas = document.getElementById(canvasId);
@@ -208,16 +205,12 @@
             this.initLights();
             this.initHelpers();
             this.animate = this.animate.bind(this);
-            
-            // 監聽視窗重置
             window.addEventListener('resize', this.onWindowResize.bind(this));
-            
             requestAnimationFrame(this.animate);
         }
 
         initScene() {
             this.scene = new THREE.Scene();
-            // 環境：米白底色與指數霧，確保畫面乾淨無噪點
             this.scene.background = new THREE.Color(BG_COLOR);
             this.scene.fog = new THREE.FogExp2(BG_COLOR, 0.012);
 
@@ -227,7 +220,6 @@
             this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
             this.renderer.setSize(this.width, this.height);
             this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            // 啟用陰影增添實體感
             this.renderer.shadowMap.enabled = true;
             this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -238,7 +230,6 @@
         }
 
         initLights() {
-            // 柔和均勻的商務攝影棚光照
             const ambient = new THREE.AmbientLight(0xffffff, 0.7);
             this.scene.add(ambient);
 
@@ -255,15 +246,12 @@
         }
 
         initHelpers() {
-            // 空間網格，採用低對比灰色融入背景
             const grid = new THREE.GridHelper(100, 50, 0x94A3B8, 0xE2E8F0);
             grid.position.y = -20;
             this.scene.add(grid);
         }
 
-        // 產生散佈的資料點
         generateData(count) {
-            // 清除舊資料
             this.points.forEach(p => {
                 this.scene.remove(p.mesh);
                 p.mesh.geometry.dispose();
@@ -272,46 +260,33 @@
             this.points = [];
 
             const geo = new THREE.SphereGeometry(0.6, 16, 16);
-            
             const numClustersData = 4;
             const clusterCenters = [];
             for(let i=0; i<numClustersData; i++) {
                 clusterCenters.push(new THREE.Vector3(
-                    (Math.random() - 0.5) * 60,
-                    (Math.random() - 0.5) * 30,
-                    (Math.random() - 0.5) * 60
+                    (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 30, (Math.random() - 0.5) * 60
                 ));
             }
 
             for (let i = 0; i < count; i++) {
                 const targetCenter = clusterCenters[Math.floor(Math.random() * numClustersData)];
-                // 使用標準材質，無發光
                 const mat = new THREE.MeshStandardMaterial({ 
-                    color: UNASSIGNED_COLOR,
-                    roughness: 0.4,
-                    metalness: 0.1
+                    color: UNASSIGNED_COLOR, roughness: 0.4, metalness: 0.1
                 });
                 const mesh = new THREE.Mesh(geo, mat);
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
-                
                 mesh.position.set(
                     targetCenter.x + (Math.random() - 0.5) * 20,
                     targetCenter.y + (Math.random() - 0.5) * 20,
                     targetCenter.z + (Math.random() - 0.5) * 20
                 );
-                
                 this.scene.add(mesh);
-                this.points.push({
-                    mesh: mesh,
-                    clusterIndex: -1
-                });
+                this.points.push({ mesh: mesh, clusterIndex: -1 });
             }
         }
 
-        // 建立群集中心 (俐落幾何體)
         generateCentroids(k) {
-            // 清除舊群集
             this.centroids.forEach(c => {
                 this.scene.remove(c.mesh);
                 c.mesh.geometry.dispose();
@@ -319,41 +294,28 @@
             });
             this.centroids = [];
 
-            // 主體幾何：乾淨的二十面體 (接近球體但有幾何切面)
             const geo = new THREE.IcosahedronGeometry(3, 0);
 
             for (let i = 0; i < k; i++) {
                 const color = PALETTE[i % PALETTE.length];
-                
-                // 霧面高級烤漆質感
                 const mat = new THREE.MeshStandardMaterial({
-                    color: color,
-                    roughness: 0.2,
-                    metalness: 0.1,
-                    flatShading: true // 凸顯幾何切面
+                    color: color, roughness: 0.2, metalness: 0.1, flatShading: true
                 });
                 const mesh = new THREE.Mesh(geo, mat);
                 mesh.castShadow = true;
 
                 const pos = new THREE.Vector3(
-                    (Math.random() - 0.5) * 40,
-                    (Math.random() - 0.5) * 20,
-                    (Math.random() - 0.5) * 40
+                    (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 40
                 );
-                
                 mesh.position.copy(pos);
                 this.scene.add(mesh);
 
                 this.centroids.push({
-                    mesh: mesh,
-                    color: color,
-                    colorObj: new THREE.Color(color),
-                    pointCount: 0
+                    mesh: mesh, color: color, colorObj: new THREE.Color(color), pointCount: 0
                 });
             }
         }
 
-        // 第 1 步：分派資料點 (Assign)
         stepAssign() {
             let changes = 0;
             this.centroids.forEach(c => c.pointCount = 0);
@@ -373,26 +335,16 @@
                 if (point.clusterIndex !== nearestIndex) {
                     changes++;
                     point.clusterIndex = nearestIndex;
-                    
                     const targetColor = this.centroids[nearestIndex].colorObj;
-                    gsap.to(point.mesh.material.color, {
-                        r: targetColor.r,
-                        g: targetColor.g,
-                        b: targetColor.b,
-                        duration: 0.8,
-                        ease: "power2.out"
-                    });
+                    gsap.to(point.mesh.material.color, { r: targetColor.r, g: targetColor.g, b: targetColor.b, duration: 0.8, ease: "power2.out" });
                 }
-                
                 if(nearestIndex !== -1) {
                     this.centroids[nearestIndex].pointCount++;
                 }
             });
-
             return changes;
         }
 
-        // 第 2 步：更新中心點 (Update)
         stepUpdate() {
             const newPositions = Array(this.centroids.length).fill(null).map(() => new THREE.Vector3(0,0,0));
             const counts = Array(this.centroids.length).fill(0);
@@ -415,11 +367,7 @@
                 }
 
                 gsap.to(centroid.mesh.position, {
-                    x: targetPos.x,
-                    y: targetPos.y,
-                    z: targetPos.z,
-                    duration: 1.5,
-                    ease: "power3.inOut"
+                    x: targetPos.x, y: targetPos.y, z: targetPos.z, duration: 1.2, ease: "power3.inOut"
                 });
             });
 
@@ -427,22 +375,18 @@
                 x: this.camera.position.x * 0.95 + (Math.random() - 0.5) * 5,
                 y: this.camera.position.y * 0.95 + 2,
                 z: this.camera.position.z * 0.95 + (Math.random() - 0.5) * 5,
-                duration: 2,
-                ease: "sine.inOut"
+                duration: 2, ease: "sine.inOut"
             });
         }
 
-        // 核心防禦：Smart Label System (2D 投影與邊界約束)
         updateLabels() {
             const labelData = [];
             const halfW = this.width / 2;
             const halfH = this.height / 2;
-
             const paddingX = 60; 
             const paddingY = 40;
 
             this.centroids.forEach((centroid, index) => {
-                // 緩慢自轉展現幾何切割面
                 centroid.mesh.rotation.y += 0.005;
                 centroid.mesh.rotation.x += 0.002;
 
@@ -451,24 +395,16 @@
 
                 let screenX = (vector.x * halfW) + halfW;
                 let screenY = -(vector.y * halfH) + halfH;
-                
                 let isBehind = vector.z > 1;
 
                 let clampedX = Math.max(paddingX, Math.min(this.width - paddingX, screenX));
                 let clampedY = Math.max(paddingY, Math.min(this.height - paddingY, screenY));
-
                 const hexColor = '#' + centroid.color.toString(16).padStart(6, '0');
 
                 labelData.push({
-                    x: clampedX,
-                    y: clampedY,
-                    count: centroid.pointCount,
-                    colorHex: hexColor,
-                    visible: !isBehind,
-                    zIndex: Math.floor((1 - vector.z) * 100)
+                    x: clampedX, y: clampedY, count: centroid.pointCount, colorHex: hexColor, visible: !isBehind, zIndex: Math.floor((1 - vector.z) * 100)
                 });
             });
-
             this.vue.labels = labelData;
         }
 
@@ -489,7 +425,6 @@
         }
     }
 
-    // --- Vue 3 應用程式 ---
     const app = createApp({
         setup() {
             const kValue = ref(3);
@@ -498,6 +433,9 @@
             const nextAction = ref('assign');
             const labels = ref([]);
             
+            const isAutoRunning = ref(false);
+            const isConverged = ref(false);
+            let autoRunTimer = null;
             let scene3D = null;
 
             const initApp = () => {
@@ -512,9 +450,17 @@
                 }
             };
 
+            const stopAutoRun = () => {
+                isAutoRunning.value = false;
+                clearTimeout(autoRunTimer);
+            };
+
             const resetAlgorithmState = () => {
+                stopAutoRun();
                 iterations.value = 0;
                 nextAction.value = 'assign';
+                isConverged.value = false;
+                
                 if(scene3D) {
                     const unassignedColor = new THREE.Color(UNASSIGNED_COLOR);
                     scene3D.points.forEach(p => {
@@ -540,15 +486,42 @@
             };
 
             const stepAlgorithm = () => {
-                if (!scene3D) return;
+                if (!scene3D || isConverged.value) return;
 
                 if (nextAction.value === 'assign') {
-                    scene3D.stepAssign();
+                    const changes = scene3D.stepAssign();
                     nextAction.value = 'update';
+                    
+                    if (changes === 0 && iterations.value > 0) {
+                        isConverged.value = true;
+                        stopAutoRun();
+                        nextAction.value = 'assign'; // 重置按鈕狀態
+                    }
                 } else {
                     scene3D.stepUpdate();
                     iterations.value++;
                     nextAction.value = 'assign';
+                }
+            };
+
+            const autoRunLoop = () => {
+                if (!isAutoRunning.value || isConverged.value) return;
+
+                stepAlgorithm();
+                
+                if (isConverged.value) return;
+
+                // 根據動作設定不同的等待時間配合 GSAP 動畫
+                const delay = nextAction.value === 'update' ? 1000 : 1500;
+                autoRunTimer = setTimeout(autoRunLoop, delay);
+            };
+
+            const toggleAutoRun = () => {
+                if (isAutoRunning.value) {
+                    stopAutoRun();
+                } else {
+                    isAutoRunning.value = true;
+                    autoRunLoop();
                 }
             };
 
@@ -562,9 +535,12 @@
                 iterations,
                 nextAction,
                 labels,
+                isAutoRunning,
+                isConverged,
                 generateData,
                 resetAlgorithm,
-                stepAlgorithm
+                stepAlgorithm,
+                toggleAutoRun
             }
         }
     });
