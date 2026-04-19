@@ -1,0 +1,579 @@
+```html
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>K-means 分群演算法 | 商務視覺互動教學</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- GSAP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Helvetica Neue"', 'Arial', 'sans-serif'],
+                    },
+                    colors: {
+                        mckinsey: {
+                            navy: '#051c2c',    // 麥肯錫深藍
+                            blue: '#005F9E',    // 標準藍
+                            teal: '#00A9A5',    // 商務青
+                            plum: '#8B1A4F',    // 沉穩酒紅
+                            gold: '#F2A900',    // 重點金
+                            gray: '#F8FAFC',    // 米白底色
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #F8FAFC; }
+        
+        /* 專業商務卡片樣式 */
+        .corp-panel {
+            background: #FFFFFF;
+            border-right: 1px solid #E2E8F0;
+            box-shadow: 4px 0 15px rgba(0, 0, 0, 0.03);
+        }
+
+        /* 高對比浮動標籤 */
+        .corp-label {
+            background: #FFFFFF;
+            border: 2px solid;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border-radius: 4px;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            font-weight: 900;
+            color: #0F172A;
+            transition: border-color 0.3s ease;
+        }
+
+        /* 扁平化商務滑桿 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #051c2c;
+            cursor: pointer;
+            margin-top: -6px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #CBD5E1;
+            border-radius: 2px;
+        }
+        
+        /* 隱藏滾動條 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 4px; }
+    </style>
+</head>
+<body class="text-slate-800 font-sans font-bold antialiased">
+
+<div id="app" class="flex h-screen w-screen overflow-hidden">
+    
+    <!-- 左側教學互動 UI (商務白底) -->
+    <div class="corp-panel w-96 z-10 flex flex-col p-8 h-full overflow-y-auto shrink-0 relative">
+        <h1 class="text-3xl font-black mb-2 text-mckinsey-navy tracking-tight">
+            K-means 分群
+        </h1>
+        <p class="text-slate-500 text-sm font-bold mb-8 leading-relaxed">
+            透過 3D 空間直觀了解資料分群過程。調整參數，並透過迭代觀察群集中心如何捕捉資料特徵。
+        </p>
+
+        <!-- 控制面板 -->
+        <div class="bg-slate-50 rounded-lg p-5 mb-6 border border-slate-200">
+            <div class="mb-6">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-lg text-slate-700">群集數量 (K)</label>
+                    <span class="text-xl font-black text-mckinsey-navy">{{ kValue }}</span>
+                </div>
+                <input type="range" min="2" max="6" v-model.number="kValue" @input="resetAlgorithm" class="w-full">
+            </div>
+
+            <div class="mb-4">
+                <div class="flex justify-between items-center mb-2">
+                    <label class="text-lg text-slate-700">資料點數量</label>
+                    <span class="text-xl font-black text-mckinsey-navy">{{ dataSize }}</span>
+                </div>
+                <input type="range" min="50" max="400" step="10" v-model.number="dataSize" @change="generateData" class="w-full">
+            </div>
+        </div>
+
+        <!-- 狀態與操作 -->
+        <div class="bg-slate-50 rounded-lg p-5 mb-auto border border-slate-200">
+            <div class="flex justify-between items-center mb-4 border-b border-slate-200 pb-2">
+                <span class="text-slate-500 text-sm uppercase tracking-wider font-bold">迭代次數</span>
+                <span class="text-3xl font-black text-mckinsey-navy">{{ iterations }}</span>
+            </div>
+            
+            <div class="space-y-3 pt-2">
+                <button 
+                    @click="stepAlgorithm"
+                    class="w-full py-4 rounded font-black text-lg transition-colors border-2 flex items-center justify-center gap-2"
+                    :class="nextAction === 'assign' ? 'bg-mckinsey-navy border-mckinsey-navy text-white hover:bg-slate-800' : 'bg-mckinsey-teal border-mckinsey-teal text-white hover:bg-teal-600'"
+                >
+                    {{ nextAction === 'assign' ? '1. 分派資料點 (Assign)' : '2. 更新中心點 (Update)' }}
+                </button>
+                
+                <button 
+                    @click="resetAlgorithm"
+                    class="w-full py-3 rounded font-bold text-slate-600 bg-white hover:bg-slate-100 transition-colors border-2 border-slate-300"
+                >
+                    重置空間 (Reset)
+                </button>
+            </div>
+        </div>
+
+        <!-- 說明區塊 -->
+        <div class="mt-6 p-4 bg-white rounded border border-slate-200 text-sm text-slate-600 shadow-sm">
+            <span class="text-mckinsey-navy font-black">分派：</span>計算每個點到最近中心的距離並上色。<br>
+            <span class="text-mckinsey-teal font-black">更新：</span>計算同色點的平均座標，移動中心點。
+        </div>
+    </div>
+
+    <!-- 右側 3D 視覺化 Canvas (米白底色) -->
+    <div id="canvas-wrapper" class="flex-1 relative w-full h-full bg-slate-50" ref="canvasWrapper">
+        <canvas id="webgl-canvas" class="absolute inset-0 w-full h-full"></canvas>
+        
+        <!-- 智慧型標籤系統 (高對比企業風格) -->
+        <div v-for="(label, index) in labels" :key="'label-'+index"
+             class="absolute corp-label px-4 py-2 flex flex-col items-center justify-center min-w-[100px] transition-opacity duration-200"
+             :style="{ 
+                 left: label.x + 'px', 
+                 top: label.y + 'px', 
+                 borderTopColor: label.colorHex,
+                 borderRightColor: '#E2E8F0',
+                 borderBottomColor: '#E2E8F0',
+                 borderLeftColor: '#E2E8F0',
+                 borderTopWidth: '4px',
+                 opacity: label.visible ? 1 : 0,
+                 zIndex: label.zIndex
+             }">
+            <div class="text-xs text-slate-500 uppercase tracking-widest mb-1 font-bold">Cluster {{ index + 1 }}</div>
+            <div class="text-xl font-black text-slate-800">
+                {{ label.count }} <span class="text-sm text-slate-500">Pts</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const { createApp, ref, onMounted, watch } = Vue;
+
+    // --- 麥肯錫商務專業色系 ---
+    const PALETTE = [
+        0x005F9E, // 標準藍
+        0x00A9A5, // 商務青
+        0x8B1A4F, // 沉穩酒紅
+        0xF2A900, // 重點金
+        0x5BA3D9, // 淺藍
+        0x64748B  // 鐵灰
+    ];
+    const UNASSIGNED_COLOR = 0xCBD5E1; // 未分派的淺灰 (Slate 300)
+    const BG_COLOR = '#F8FAFC'; // 米白底色 (Slate 50)
+
+    // --- Three.js 核心類別 ---
+    class KMeansScene {
+        constructor(canvasId, vueApp) {
+            this.canvas = document.getElementById(canvasId);
+            this.vue = vueApp;
+            this.width = this.canvas.parentElement.clientWidth;
+            this.height = this.canvas.parentElement.clientHeight;
+
+            this.points = [];
+            this.centroids = [];
+            
+            this.initScene();
+            this.initLights();
+            this.initHelpers();
+            this.animate = this.animate.bind(this);
+            
+            // 監聽視窗重置
+            window.addEventListener('resize', this.onWindowResize.bind(this));
+            
+            requestAnimationFrame(this.animate);
+        }
+
+        initScene() {
+            this.scene = new THREE.Scene();
+            // 環境：米白底色與指數霧，確保畫面乾淨無噪點
+            this.scene.background = new THREE.Color(BG_COLOR);
+            this.scene.fog = new THREE.FogExp2(BG_COLOR, 0.012);
+
+            this.camera = new THREE.PerspectiveCamera(45, this.width / this.height, 0.1, 1000);
+            this.camera.position.set(0, 35, 70);
+
+            this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
+            this.renderer.setSize(this.width, this.height);
+            this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            // 啟用陰影增添實體感
+            this.renderer.shadowMap.enabled = true;
+            this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+            this.controls.enableDamping = true;
+            this.controls.dampingFactor = 0.05;
+            this.controls.maxDistance = 150;
+        }
+
+        initLights() {
+            // 柔和均勻的商務攝影棚光照
+            const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+            this.scene.add(ambient);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            dirLight.position.set(20, 40, 20);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 1024;
+            dirLight.shadow.mapSize.height = 1024;
+            this.scene.add(dirLight);
+
+            const fillLight = new THREE.DirectionalLight(0xf8fafc, 0.3);
+            fillLight.position.set(-20, 20, -20);
+            this.scene.add(fillLight);
+        }
+
+        initHelpers() {
+            // 空間網格，採用低對比灰色融入背景
+            const grid = new THREE.GridHelper(100, 50, 0x94A3B8, 0xE2E8F0);
+            grid.position.y = -20;
+            this.scene.add(grid);
+        }
+
+        // 產生散佈的資料點
+        generateData(count) {
+            // 清除舊資料
+            this.points.forEach(p => {
+                this.scene.remove(p.mesh);
+                p.mesh.geometry.dispose();
+                p.mesh.material.dispose();
+            });
+            this.points = [];
+
+            const geo = new THREE.SphereGeometry(0.6, 16, 16);
+            
+            const numClustersData = 4;
+            const clusterCenters = [];
+            for(let i=0; i<numClustersData; i++) {
+                clusterCenters.push(new THREE.Vector3(
+                    (Math.random() - 0.5) * 60,
+                    (Math.random() - 0.5) * 30,
+                    (Math.random() - 0.5) * 60
+                ));
+            }
+
+            for (let i = 0; i < count; i++) {
+                const targetCenter = clusterCenters[Math.floor(Math.random() * numClustersData)];
+                // 使用標準材質，無發光
+                const mat = new THREE.MeshStandardMaterial({ 
+                    color: UNASSIGNED_COLOR,
+                    roughness: 0.4,
+                    metalness: 0.1
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                
+                mesh.position.set(
+                    targetCenter.x + (Math.random() - 0.5) * 20,
+                    targetCenter.y + (Math.random() - 0.5) * 20,
+                    targetCenter.z + (Math.random() - 0.5) * 20
+                );
+                
+                this.scene.add(mesh);
+                this.points.push({
+                    mesh: mesh,
+                    clusterIndex: -1
+                });
+            }
+        }
+
+        // 建立群集中心 (俐落幾何體)
+        generateCentroids(k) {
+            // 清除舊群集
+            this.centroids.forEach(c => {
+                this.scene.remove(c.mesh);
+                c.mesh.geometry.dispose();
+                c.mesh.material.dispose();
+            });
+            this.centroids = [];
+
+            // 主體幾何：乾淨的二十面體 (接近球體但有幾何切面)
+            const geo = new THREE.IcosahedronGeometry(3, 0);
+
+            for (let i = 0; i < k; i++) {
+                const color = PALETTE[i % PALETTE.length];
+                
+                // 霧面高級烤漆質感
+                const mat = new THREE.MeshStandardMaterial({
+                    color: color,
+                    roughness: 0.2,
+                    metalness: 0.1,
+                    flatShading: true // 凸顯幾何切面
+                });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.castShadow = true;
+
+                const pos = new THREE.Vector3(
+                    (Math.random() - 0.5) * 40,
+                    (Math.random() - 0.5) * 20,
+                    (Math.random() - 0.5) * 40
+                );
+                
+                mesh.position.copy(pos);
+                this.scene.add(mesh);
+
+                this.centroids.push({
+                    mesh: mesh,
+                    color: color,
+                    colorObj: new THREE.Color(color),
+                    pointCount: 0
+                });
+            }
+        }
+
+        // 第 1 步：分派資料點 (Assign)
+        stepAssign() {
+            let changes = 0;
+            this.centroids.forEach(c => c.pointCount = 0);
+
+            this.points.forEach(point => {
+                let minDist = Infinity;
+                let nearestIndex = -1;
+
+                this.centroids.forEach((centroid, index) => {
+                    const dist = point.mesh.position.distanceTo(centroid.mesh.position);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearestIndex = index;
+                    }
+                });
+
+                if (point.clusterIndex !== nearestIndex) {
+                    changes++;
+                    point.clusterIndex = nearestIndex;
+                    
+                    const targetColor = this.centroids[nearestIndex].colorObj;
+                    gsap.to(point.mesh.material.color, {
+                        r: targetColor.r,
+                        g: targetColor.g,
+                        b: targetColor.b,
+                        duration: 0.8,
+                        ease: "power2.out"
+                    });
+                }
+                
+                if(nearestIndex !== -1) {
+                    this.centroids[nearestIndex].pointCount++;
+                }
+            });
+
+            return changes;
+        }
+
+        // 第 2 步：更新中心點 (Update)
+        stepUpdate() {
+            const newPositions = Array(this.centroids.length).fill(null).map(() => new THREE.Vector3(0,0,0));
+            const counts = Array(this.centroids.length).fill(0);
+
+            this.points.forEach(point => {
+                if (point.clusterIndex !== -1) {
+                    newPositions[point.clusterIndex].add(point.mesh.position);
+                    counts[point.clusterIndex]++;
+                }
+            });
+
+            this.centroids.forEach((centroid, i) => {
+                let targetPos = new THREE.Vector3();
+                if (counts[i] > 0) {
+                    targetPos.copy(newPositions[i].divideScalar(counts[i]));
+                } else {
+                    targetPos.copy(centroid.mesh.position).add(
+                        new THREE.Vector3((Math.random()-0.5)*5, (Math.random()-0.5)*5, (Math.random()-0.5)*5)
+                    );
+                }
+
+                gsap.to(centroid.mesh.position, {
+                    x: targetPos.x,
+                    y: targetPos.y,
+                    z: targetPos.z,
+                    duration: 1.5,
+                    ease: "power3.inOut"
+                });
+            });
+
+            gsap.to(this.camera.position, {
+                x: this.camera.position.x * 0.95 + (Math.random() - 0.5) * 5,
+                y: this.camera.position.y * 0.95 + 2,
+                z: this.camera.position.z * 0.95 + (Math.random() - 0.5) * 5,
+                duration: 2,
+                ease: "sine.inOut"
+            });
+        }
+
+        // 核心防禦：Smart Label System (2D 投影與邊界約束)
+        updateLabels() {
+            const labelData = [];
+            const halfW = this.width / 2;
+            const halfH = this.height / 2;
+
+            const paddingX = 60; 
+            const paddingY = 40;
+
+            this.centroids.forEach((centroid, index) => {
+                // 緩慢自轉展現幾何切割面
+                centroid.mesh.rotation.y += 0.005;
+                centroid.mesh.rotation.x += 0.002;
+
+                const vector = centroid.mesh.position.clone();
+                vector.project(this.camera);
+
+                let screenX = (vector.x * halfW) + halfW;
+                let screenY = -(vector.y * halfH) + halfH;
+                
+                let isBehind = vector.z > 1;
+
+                let clampedX = Math.max(paddingX, Math.min(this.width - paddingX, screenX));
+                let clampedY = Math.max(paddingY, Math.min(this.height - paddingY, screenY));
+
+                const hexColor = '#' + centroid.color.toString(16).padStart(6, '0');
+
+                labelData.push({
+                    x: clampedX,
+                    y: clampedY,
+                    count: centroid.pointCount,
+                    colorHex: hexColor,
+                    visible: !isBehind,
+                    zIndex: Math.floor((1 - vector.z) * 100)
+                });
+            });
+
+            this.vue.labels = labelData;
+        }
+
+        animate() {
+            requestAnimationFrame(this.animate);
+            this.controls.update();
+            this.updateLabels();
+            this.renderer.render(this.scene, this.camera);
+        }
+
+        onWindowResize() {
+            const wrapper = this.canvas.parentElement;
+            this.width = wrapper.clientWidth;
+            this.height = wrapper.clientHeight;
+            this.camera.aspect = this.width / this.height;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(this.width, this.height);
+        }
+    }
+
+    // --- Vue 3 應用程式 ---
+    const app = createApp({
+        setup() {
+            const kValue = ref(3);
+            const dataSize = ref(200);
+            const iterations = ref(0);
+            const nextAction = ref('assign');
+            const labels = ref([]);
+            
+            let scene3D = null;
+
+            const initApp = () => {
+                scene3D = new KMeansScene('webgl-canvas', { labels });
+                resetSpace();
+            };
+
+            const generateData = () => {
+                if(scene3D) {
+                    scene3D.generateData(dataSize.value);
+                    resetAlgorithmState();
+                }
+            };
+
+            const resetAlgorithmState = () => {
+                iterations.value = 0;
+                nextAction.value = 'assign';
+                if(scene3D) {
+                    const unassignedColor = new THREE.Color(UNASSIGNED_COLOR);
+                    scene3D.points.forEach(p => {
+                        p.clusterIndex = -1;
+                        gsap.to(p.mesh.material.color, { r: unassignedColor.r, g: unassignedColor.g, b: unassignedColor.b, duration: 0.5 });
+                    });
+                    scene3D.centroids.forEach(c => c.pointCount = 0);
+                }
+            };
+
+            const resetSpace = () => {
+                if(scene3D) {
+                    scene3D.generateCentroids(kValue.value);
+                    generateData();
+                }
+            };
+
+            const resetAlgorithm = () => {
+                if(scene3D) {
+                    scene3D.generateCentroids(kValue.value);
+                    resetAlgorithmState();
+                }
+            };
+
+            const stepAlgorithm = () => {
+                if (!scene3D) return;
+
+                if (nextAction.value === 'assign') {
+                    scene3D.stepAssign();
+                    nextAction.value = 'update';
+                } else {
+                    scene3D.stepUpdate();
+                    iterations.value++;
+                    nextAction.value = 'assign';
+                }
+            };
+
+            onMounted(() => {
+                initApp();
+            });
+
+            return {
+                kValue,
+                dataSize,
+                iterations,
+                nextAction,
+                labels,
+                generateData,
+                resetAlgorithm,
+                stepAlgorithm
+            }
+        }
+    });
+
+    app.mount('#app');
+</script>
+</body>
+</html>
+
+
+```
